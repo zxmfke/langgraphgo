@@ -1,111 +1,51 @@
-# Checkpointing Example
+# Checkpointing Examples
 
-This example demonstrates how to use checkpointing in LangGraphGo for state persistence and recovery in long-running workflows.
+This directory contains examples demonstrating how to use **Checkpointing** in LangGraphGo to persist and manage graph state.
 
-## Overview
+## 1. Background
 
-This example shows:
-- Creating checkpointable graphs for state persistence
-- Configuring automatic checkpointing with intervals and limits
-- Resuming execution from saved checkpoints
-- Managing checkpoint storage and retrieval
+In complex, long-running, or critical applications, keeping state solely in memory is risky and limiting. Checkpointing solves several key problems:
+- **Fault Tolerance**: If the application crashes, you can resume from the last saved state.
+- **Human-in-the-loop**: You can pause execution, wait for days for human input, and then resume.
+- **Time Travel**: You can inspect past states ("what happened at step 3?") or even fork execution from a previous point.
 
-## Features Demonstrated
+## 2. Key Concepts
 
-### Automatic Checkpointing
-- **Memory Store**: In-memory checkpoint storage
-- **Auto Save**: Automatic checkpoint creation during execution
-- **Save Interval**: Time-based checkpoint frequency
-- **Max Checkpoints**: Limit number of stored checkpoints
+- **CheckpointSaver**: An interface for saving and loading graph state. LangGraphGo provides implementations for:
+  - **Memory**: Ephemeral, good for testing.
+  - **PostgreSQL**: Robust, production-grade persistence.
+  - **SQLite**: Lightweight, file-based persistence.
+  - **Redis**: Fast, in-memory persistence.
+- **ThreadID**: A unique identifier for a conversation or execution thread. Checkpoints are isolated by ThreadID.
+- **CheckpointConfig**: Configuration options like `AutoSave`, `SaveInterval`, and `MaxCheckpoints`.
 
-### State Management
-- Custom state structures with multiple fields
-- Step-by-step state evolution
-- History tracking throughout execution
+## 3. Examples
 
-### Recovery Operations
-- Listing all available checkpoints
-- Resuming from specific checkpoint points
-- State reconstruction from checkpoint data
+### [In-Memory (main.go)](./main.go)
+Demonstrates the basic API using an in-memory store. Good for understanding the concepts without setting up a database.
 
-## Running the Example
+### [PostgreSQL (postgres/)](./postgres/)
+Shows how to use a PostgreSQL database for durable state storage. Requires a running Postgres instance.
+
+### [SQLite (sqlite/)](./sqlite/)
+Shows how to use a local SQLite file. Ideal for desktop apps or simple deployments.
+
+### [Redis (redis/)](./redis/)
+Shows how to use Redis for high-performance state storage.
+
+## 4. How to Use
+
+To run the PostgreSQL example:
 
 ```bash
-cd examples/checkpointing
+export POSTGRES_CONN_STRING="postgres://user:password@localhost:5432/dbname"
+cd postgres
 go run main.go
 ```
 
-## Code Structure
+To run the SQLite example:
 
-```go
-// Define custom state structure
-type ProcessState struct {
-    Step    int
-    Data    string
-    History []string
-}
-
-// Configure checkpointing
-config := graph.CheckpointConfig{
-    Store:          graph.NewMemoryCheckpointStore(),
-    AutoSave:       true,
-    SaveInterval:   2 * time.Second,
-    MaxCheckpoints: 5,
-}
-
-// Create checkpointable graph
-g := graph.NewCheckpointableMessageGraph()
-g.SetCheckpointConfig(config)
-
-// Compile and execute with automatic checkpointing
-runnable, _ := g.CompileCheckpointable()
-result, _ := runnable.Invoke(ctx, initialState)
+```bash
+cd sqlite
+go run main.go
 ```
-
-## Expected Output
-
-```
-=== Starting execution with checkpointing ===
-Executing Step 1...
-Executing Step 2...
-Executing Step 3...
-
-=== Execution completed ===
-Final Step: 3
-Final Data: Start → Step1 → Step2 → Step3
-History: [Initialized Completed Step 1 Completed Step 2 Completed Step 3]
-
-=== Created 3 checkpoints ===
-Checkpoint 1: ID=checkpoint_1, Time=2024-01-01 10:00:00
-Checkpoint 2: ID=checkpoint_2, Time=2024-01-01 10:00:02
-Checkpoint 3: ID=checkpoint_3, Time=2024-01-01 10:00:04
-
-=== Resuming from checkpoint checkpoint_2 ===
-Resumed at Step: 2
-Resumed Data: Start → Step1 → Step2
-```
-
-## Key Concepts
-
-### Checkpoint Configuration
-- **Store Types**: Memory, file-based, or database storage
-- **Auto Save**: Automatic vs manual checkpoint creation
-- **Intervals**: Time-based or step-based checkpointing
-- **Limits**: Managing storage space and retention
-
-### State Persistence
-- **Serialization**: How state is stored and retrieved
-- **Evolution**: State changes across execution steps
-- **Consistency**: Ensuring checkpoint integrity
-
-### Recovery Patterns
-- **Resume Points**: Selecting appropriate checkpoints for recovery
-- **State Validation**: Ensuring resumed state is valid
-- **Error Handling**: Managing recovery failures
-
-## Use Cases
-
-- **Long-Running Workflows**: Multi-hour processing pipelines
-- **Fault Tolerance**: Recovery from system failures
-- **Debugging**: Examining intermediate states
-- **Branching**: Testing different execution paths from same checkpoint

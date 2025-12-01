@@ -2,6 +2,7 @@ package prebuilt
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/smallnest/langgraphgo/graph"
@@ -43,6 +44,17 @@ func CreateReactAgent(model llms.Model, inputTools []tools.Tool) (*graph.StateRu
 				Function: &llms.FunctionDefinition{
 					Name:        t.Name(),
 					Description: t.Description(),
+					Parameters: map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"input": map[string]interface{}{
+								"type":        "string",
+								"description": "The input query for the tool",
+							},
+						},
+						"required":             []string{"input"},
+						"additionalProperties": false,
+					},
 				},
 			})
 		}
@@ -99,10 +111,23 @@ func CreateReactAgent(model llms.Model, inputTools []tools.Tool) (*graph.StateRu
 
 		for _, part := range lastMsg.Parts {
 			if tc, ok := part.(llms.ToolCall); ok {
+				// Parse arguments to get input
+				var args map[string]interface{}
+				if err := json.Unmarshal([]byte(tc.FunctionCall.Arguments), &args); err != nil {
+					// If unmarshal fails, try to use the raw string if it's not JSON object
+				}
+
+				inputVal := ""
+				if val, ok := args["input"].(string); ok {
+					inputVal = val
+				} else {
+					inputVal = tc.FunctionCall.Arguments
+				}
+
 				// Execute tool
 				res, err := toolExecutor.Execute(ctx, ToolInvocation{
 					Tool:      tc.FunctionCall.Name,
-					ToolInput: tc.FunctionCall.Arguments,
+					ToolInput: inputVal,
 				})
 				if err != nil {
 					res = fmt.Sprintf("Error: %v", err)

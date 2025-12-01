@@ -36,6 +36,11 @@
 - **Unified Interface**: Seamless integration with RAG pipelines through standard `AddDocuments`, `SimilaritySearch`, and `SimilaritySearchWithScore` methods.
 - **Complete Adapters**: Now includes adapters for DocumentLoaders, TextSplitters, Embedders, and VectorStores from langchaingo.
 
+### Tools & Integrations
+- **Tool Package**: Added a new `tool` package for easy integration of external tools.
+- **Search Tools**: Implemented `TavilySearch` and `ExaSearch` tools compatible with `langchaingo` interfaces.
+- **Agent Integration**: Updated `ReAct` agent to support tool parameter schema generation and argument parsing for OpenAI-compatible APIs.
+
 ### Examples
 - Added comprehensive examples for:
   - Checkpointing (Postgres, SQLite, Redis)
@@ -44,6 +49,8 @@
   - Subgraphs
   - **LangChain VectorStore integration** (new)
   - **Chroma vector database integration** (new)
+  - **Tavily Search Tool** (new)
+  - **Exa Search Tool** (new)
 
 ## [0.1.0] - 2025-01-02
 

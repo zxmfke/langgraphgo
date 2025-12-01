@@ -34,6 +34,7 @@ go get github.com/smallnest/langgraphgo
     - **可视化**: 支持导出为 Mermaid、DOT 和 ASCII 图表，并支持条件边。
     - **人在回路 (HITL)**: 支持中断执行 (`InterruptBefore`/`After`) 并使用更新后的状态恢复 (`Command`)。
     - **可观测性**: 内置追踪和指标支持。
+    - **工具**: 集成了 `Tavily` 和 `Exa` 搜索工具。
 
 ## 🎯 快速开始
 
@@ -88,6 +89,8 @@ func main() {
 - **[RAG 与 LangChain](./examples/rag_with_langchain/)** - LangChain 组件集成
 - **[RAG 与 VectorStores](./examples/rag_langchain_vectorstore_example/)** - LangChain VectorStore 集成 (新增!)
 - **[RAG 与 Chroma](./examples/rag_chroma_example/)** - Chroma 向量数据库集成 (新增!)
+- **[Tavily 搜索](./examples/tool_tavily/)** - Tavily 搜索工具集成 (新增!)
+- **[Exa 搜索](./examples/tool_exa/)** - Exa 搜索工具集成 (新增!)
 - **[流式传输](./examples/streaming_pipeline/)** - 实时进度更新
 - **[条件路由](./examples/conditional_routing/)** - 动态路径选择
 - **[Checkpointing](./examples/checkpointing/)** - 保存和恢复状态
@@ -95,6 +98,7 @@ func main() {
 - **[监听器](./examples/listeners/)** - 进度、指标和日志
 - **[子图](./examples/subgraph/)** - 嵌套图组合
 - **[Swarm](./examples/swarm/)** - 多 Agent 协作
+- **[State Schema](./examples/state_schema/)** - 使用 Reducer 进行复杂状态管理
 
 ## 🔧 核心概念
 

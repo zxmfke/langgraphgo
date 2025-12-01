@@ -34,6 +34,7 @@ go get github.com/smallnest/langgraphgo
     - **Visualization**: Export graphs to Mermaid, DOT, and ASCII with conditional edge support.
     - **Human-in-the-loop (HITL)**: Interrupt execution (`InterruptBefore`/`After`) and resume with updated state (`Command`).
     - **Observability**: Built-in tracing and metrics support.
+    - **Tools**: Integrated `Tavily` and `Exa` search tools.
 
 ## 🎯 Quick Start
 
@@ -88,6 +89,8 @@ func main() {
 - **[RAG with LangChain](./examples/rag_with_langchain/)** - LangChain components integration
 - **[RAG with VectorStores](./examples/rag_langchain_vectorstore_example/)** - LangChain VectorStore integration (New!)
 - **[RAG with Chroma](./examples/rag_chroma_example/)** - Chroma vector database integration (New!)
+- **[Tavily Search](./examples/tool_tavily/)** - Tavily search tool integration (New!)
+- **[Exa Search](./examples/tool_exa/)** - Exa search tool integration (New!)
 - **[Streaming](./examples/streaming_pipeline/)** - Real-time progress updates
 - **[Conditional Routing](./examples/conditional_routing/)** - Dynamic path selection
 - **[Checkpointing](./examples/checkpointing/)** - Save and resume state
@@ -95,6 +98,7 @@ func main() {
 - **[Listeners](./examples/listeners/)** - Progress, metrics, and logging
 - **[Subgraphs](./examples/subgraph/)** - Nested graph composition
 - **[Swarm](./examples/swarm/)** - Multi-agent collaboration
+- **[State Schema](./examples/state_schema/)** - Complex state management with Reducers
 
 ## 🔧 Key Concepts
 

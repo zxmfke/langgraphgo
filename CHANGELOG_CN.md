@@ -36,6 +36,11 @@
 - **统一接口**: 通过标准的 `AddDocuments`、`SimilaritySearch` 和 `SimilaritySearchWithScore` 方法与 RAG 管道无缝集成。
 - **完整适配器**: 现在包含 langchaingo 的 DocumentLoaders、TextSplitters、Embedders 和 VectorStores 适配器。
 
+### 工具与集成 (Tools & Integrations)
+- **Tool 包**: 添加了新的 `tool` 包，便于集成外部工具。
+- **搜索工具**: 实现了与 `langchaingo` 接口兼容的 `TavilySearch` 和 `ExaSearch` 工具。
+- **Agent 集成**: 更新了 `ReAct` Agent 以支持为 OpenAI 兼容 API 生成工具参数 Schema 和解析参数。
+
 ### 示例 (Examples)
 - 添加了涵盖以下内容的综合示例：
   - 检查点 (Postgres, SQLite, Redis)
@@ -44,6 +49,8 @@
   - 子图
   - **LangChain VectorStore 集成** (新增)
   - **Chroma 向量数据库集成** (新增)
+  - **Tavily 搜索工具** (新增)
+  - **Exa 搜索工具** (新增)
 
 ## [0.1.0] - 2025-01-02
 
