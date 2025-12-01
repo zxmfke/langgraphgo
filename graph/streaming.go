@@ -6,6 +6,20 @@ import (
 	"time"
 )
 
+// StreamMode defines the mode of streaming
+type StreamMode string
+
+const (
+	// StreamModeValues emits the full state after each step
+	StreamModeValues StreamMode = "values"
+	// StreamModeUpdates emits the updates (deltas) from each node
+	StreamModeUpdates StreamMode = "updates"
+	// StreamModeMessages emits LLM messages/tokens (if available)
+	StreamModeMessages StreamMode = "messages"
+	// StreamModeDebug emits all events (default)
+	StreamModeDebug StreamMode = "debug"
+)
+
 // StreamConfig configures streaming behavior
 type StreamConfig struct {
 	// BufferSize is the size of the event channel buffer
@@ -16,6 +30,9 @@ type StreamConfig struct {
 
 	// MaxDroppedEvents is the maximum number of events to drop before logging
 	MaxDroppedEvents int
+
+	// Mode specifies what kind of events to stream
+	Mode StreamMode
 }
 
 // DefaultStreamConfig returns the default streaming configuration
@@ -24,6 +41,7 @@ func DefaultStreamConfig() StreamConfig {
 		BufferSize:         1000,
 		EnableBackpressure: true,
 		MaxDroppedEvents:   100,
+		Mode:               StreamModeDebug,
 	}
 }
 
@@ -73,6 +91,11 @@ func (sl *StreamingListener) emitEvent(event StreamEvent) {
 	}
 	sl.mutex.RUnlock()
 
+	// Filter based on Mode
+	if !sl.shouldEmit(event) {
+		return
+	}
+
 	// Try to send event without blocking
 	select {
 	case sl.eventChan <- event:
@@ -83,6 +106,29 @@ func (sl *StreamingListener) emitEvent(event StreamEvent) {
 			sl.handleBackpressure()
 		}
 		// Drop the event if backpressure handling is disabled or channel is still full
+	}
+}
+
+func (sl *StreamingListener) shouldEmit(event StreamEvent) bool {
+	switch sl.config.Mode {
+	case StreamModeDebug:
+		return true
+	case StreamModeValues:
+		// Only emit OnGraphStep events (which contain full state)
+		// We use a custom event type for this?
+		// Currently OnGraphStep calls emitEvent with what?
+		// We need to implement OnGraphStep in StreamingListener.
+		// For now, let's assume OnGraphStep emits a special event.
+		// If event.Event == "graph_step", return true.
+		return event.Event == "graph_step"
+	case StreamModeUpdates:
+		// Emit node outputs (ToolEnd, ChainEnd, NodeEventComplete)
+		return event.Event == EventToolEnd || event.Event == EventChainEnd || event.Event == NodeEventComplete
+	case StreamModeMessages:
+		// Emit LLM events
+		return event.Event == EventLLMEnd || event.Event == EventLLMStart
+	default:
+		return true
 	}
 }
 
@@ -184,6 +230,16 @@ func (sl *StreamingListener) OnRetrieverEnd(ctx context.Context, documents []int
 }
 
 func (sl *StreamingListener) OnRetrieverError(ctx context.Context, err error, runID string) {
+}
+
+// OnGraphStep implements GraphCallbackHandler
+func (sl *StreamingListener) OnGraphStep(ctx context.Context, stepNode string, state interface{}) {
+	sl.emitEvent(StreamEvent{
+		Timestamp: time.Now(),
+		Event:     "graph_step", // Custom event type
+		NodeName:  stepNode,
+		State:     state,
+	})
 }
 
 // Close marks the listener as closed to prevent sending to closed channels

@@ -27,12 +27,16 @@ go get github.com/smallnest/langgraphgo
 
 - **高级能力**:
     - **状态 Schema**: 支持细粒度的状态更新和自定义 Reducer（例如 `AppendReducer`）。
-    - **增强流式传输**: 支持具有细粒度 `StreamEvent` 类型的实时事件流。
+    - **智能消息**: 支持基于 ID 更新 (Upsert) 的智能消息合并 (`AddMessages`)。
+    - **Command API**: 节点级的动态流控制和状态更新。
+    - **临时通道**: 管理每步后自动清除的临时状态。
+    - **子图**: 通过嵌套图来构建复杂的 Agent。
+    - **增强流式传输**: 支持多种模式 (`updates`, `values`, `messages`) 的实时事件流。
     - **预构建 Agent**: 开箱即用的 `ReAct` 和 `Supervisor` Agent 工厂。
 
 - **开发者体验**:
     - **可视化**: 支持导出为 Mermaid、DOT 和 ASCII 图表，并支持条件边。
-    - **人在回路 (HITL)**: 支持中断执行 (`InterruptBefore`/`After`) 并使用更新后的状态恢复 (`Command`)。
+    - **人在回路 (HITL)**: 中断执行、检查状态、编辑历史 (`UpdateState`) 并恢复。
     - **可观测性**: 内置追踪和指标支持。
     - **工具**: 集成了 `Tavily` 和 `Exa` 搜索工具。
 
@@ -96,10 +100,14 @@ func main() {
 - **[Checkpointing](./examples/checkpointing/)** - 保存和恢复状态
 - **[可视化](./examples/visualization/)** - 导出图表
 - **[监听器](./examples/listeners/)** - 进度、指标和日志
-- **[子图](./examples/subgraph/)** - 嵌套图组合
+- **[子图](./examples/subgraphs/)** - 嵌套图组合
 - **[Swarm](./examples/swarm/)** - 多 Agent 协作
 - **[State Schema](./examples/state_schema/)** - 使用 Reducer 进行复杂状态管理
-- **[Time Travel](./examples/time_travel/)** - 检查和修改状态历史
+- **[智能消息](./examples/smart_messages/)** - 智能消息合并 (Upserts)
+- **[Command API](./examples/command_api/)** - 动态流控制
+- **[临时通道](./examples/ephemeral_channels/)** - 临时状态管理
+- **[流式模式](./examples/streaming_modes/)** - 高级流式模式
+- **[Time Travel / HITL](./examples/time_travel/)** - 检查、编辑和分叉状态历史
 - **[Dynamic Interrupt](./examples/dynamic_interrupt/)** - 在节点内部暂停执行
 - **[Durable Execution](./examples/durable_execution/)** - 崩溃恢复和从检查点恢复执行
 

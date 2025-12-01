@@ -3,84 +3,102 @@ package graph
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestEnhancedStreaming(t *testing.T) {
+func TestStreamingModes(t *testing.T) {
 	g := NewStreamingMessageGraph()
 
+	// Setup simple graph
 	g.AddNode("A", func(ctx context.Context, state interface{}) (interface{}, error) {
-		// Simulate some work
-		time.Sleep(10 * time.Millisecond)
+		return "A", nil
+	})
+	g.AddNode("B", func(ctx context.Context, state interface{}) (interface{}, error) {
+		return "B", nil
+	})
+	g.SetEntryPoint("A")
+	g.AddEdge("A", "B")
+	g.AddEdge("B", END)
 
-		// Simulate LLM call via callback
-		config := GetConfig(ctx)
-		if config != nil {
-			for _, cb := range config.Callbacks {
-				cb.OnLLMStart(ctx, nil, []string{"prompt"}, "run-1", nil, nil, nil)
-				time.Sleep(5 * time.Millisecond)
-				cb.OnLLMEnd(ctx, "response", "run-1")
-			}
+	// Test StreamModeValues
+	t.Run("Values", func(t *testing.T) {
+		g.SetStreamConfig(StreamConfig{
+			BufferSize: 100,
+			Mode:       StreamModeValues,
+		})
+
+		runnable, err := g.CompileStreaming()
+		assert.NoError(t, err)
+
+		res := runnable.Stream(context.Background(), "Start")
+
+		var events []StreamEvent
+		for event := range res.Events {
+			events = append(events, event)
 		}
 
-		return "A done", nil
+		// Expect "graph_step" events
+		// A runs -> state "StartA"
+		// B runs -> state "StartAB"
+		// (Assuming MessageGraph appends strings by default or replaces?
+		// MessageGraph defaults to simple replacement if no schema?
+		// Wait, MessageGraph uses ListenableMessageGraph which uses MessageGraph.
+		// MessageGraph uses default Node/Edge structs.
+		// It does NOT have a default schema/reducer unless set.
+		// If no schema/merger, parallel execution takes last result.
+		// Sequential A->B: A returns "A". State becomes "A".
+		// B returns "B". State becomes "B".
+
+		// Let's verify graph behavior first.
+		// A -> "A". B -> "B".
+		// Events:
+		// 1. graph_step (after A): State "A"
+		// 2. graph_step (after B): State "B"
+
+		assert.NotEmpty(t, events)
+		for _, e := range events {
+			assert.Equal(t, "graph_step", string(e.Event))
+		}
+
+		lastEvent := events[len(events)-1]
+		assert.Equal(t, "B", lastEvent.State)
 	})
 
-	g.SetEntryPoint("A")
-	g.AddEdge("A", END)
+	// Test StreamModeUpdates
+	t.Run("Updates", func(t *testing.T) {
+		g.SetStreamConfig(StreamConfig{
+			BufferSize: 100,
+			Mode:       StreamModeUpdates,
+		})
 
-	runnable, err := g.CompileStreaming()
-	assert.NoError(t, err)
+		runnable, err := g.CompileStreaming()
+		assert.NoError(t, err)
 
-	streamResult := runnable.Stream(context.Background(), nil)
-	defer streamResult.Cancel()
+		res := runnable.Stream(context.Background(), "Start")
 
-	var events []StreamEvent
-	for event := range streamResult.Events {
-		events = append(events, event)
-	}
-
-	// Verify events
-	// Expected: ChainStart, NodeStart(A), LLMStart, LLMEnd, NodeEnd(A), ChainEnd
-	// Note: NodeStart/End are emitted by ListenableNode logic.
-	// ChainStart/End are emitted by StreamingListener via callbacks?
-	// Wait, StreamingListener is added as a NodeListener, so it gets Node events.
-	// It is also added as a CallbackHandler in config.
-	// Who calls OnChainStart?
-	// In graph.go InvokeWithConfig calls OnChainStart.
-	// ListenableRunnable.InvokeWithConfig does NOT call OnChainStart yet.
-	// I need to update ListenableRunnable.InvokeWithConfig to call callbacks if I want Chain events.
-
-	// Let's check what we have.
-	// NodeStart/End come from ListenableNode.Execute calling NotifyListeners.
-	// LLMStart/End come from manual calls in Node A.
-
-	hasNodeStart := false
-	hasNodeEnd := false
-	hasLLMStart := false
-	hasLLMEnd := false
-
-	for _, e := range events {
-		switch e.Event {
-		case NodeEventStart:
-			if e.NodeName == "A" {
-				hasNodeStart = true
-			}
-		case NodeEventComplete:
-			if e.NodeName == "A" {
-				hasNodeEnd = true
-			}
-		case EventLLMStart:
-			hasLLMStart = true
-		case EventLLMEnd:
-			hasLLMEnd = true
+		var events []StreamEvent
+		for event := range res.Events {
+			events = append(events, event)
 		}
-	}
 
-	assert.True(t, hasNodeStart, "Should have NodeStart event")
-	assert.True(t, hasNodeEnd, "Should have NodeEnd event")
-	assert.True(t, hasLLMStart, "Should have LLMStart event")
-	assert.True(t, hasLLMEnd, "Should have LLMEnd event")
+		// Expect ToolEnd events (since nodes are treated as tools)
+		// A -> "A"
+		// B -> "B"
+
+		foundA := false
+		foundB := false
+		for _, e := range events {
+			if e.Event == NodeEventComplete {
+				if e.State == "A" {
+					foundA = true
+				}
+				if e.State == "B" {
+					foundB = true
+				}
+			}
+		}
+		assert.True(t, foundA)
+		assert.True(t, foundB)
+	})
 }

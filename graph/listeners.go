@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -274,17 +275,29 @@ func (lr *ListenableRunnable) InvokeWithConfig(ctx context.Context, initialState
 			return nil, ErrNodeNotFound
 		}
 
-		var err error
-		state, err = listenableNode.Execute(ctx, state)
+		// Execute the node function
+		result, err := listenableNode.Execute(ctx, state)
 		if err != nil {
 			return nil, err
 		}
 
+		// Update state using Schema if available
+		if lr.graph.Schema != nil {
+			state, err = lr.graph.Schema.Update(state, result)
+			if err != nil {
+				return nil, fmt.Errorf("schema update failed: %w", err)
+			}
+		} else {
+			// Default behavior: replace state
+			state = result
+		}
+
 		// Find next node
+		var nextNode string
 		foundNext := false
 		for _, edge := range lr.graph.edges {
 			if edge.From == currentNode {
-				currentNode = edge.To
+				nextNode = edge.To
 				foundNext = true
 				break
 			}
@@ -293,6 +306,23 @@ func (lr *ListenableRunnable) InvokeWithConfig(ctx context.Context, initialState
 		if !foundNext {
 			return nil, ErrNoOutgoingEdge
 		}
+
+		// Cleanup ephemeral state if supported
+		if cleaningSchema, ok := lr.graph.Schema.(CleaningStateSchema); ok {
+			state = cleaningSchema.Cleanup(state)
+		}
+
+		// Notify callbacks of step completion
+		if config != nil && len(config.Callbacks) > 0 {
+			for _, cb := range config.Callbacks {
+				if gcb, ok := cb.(GraphCallbackHandler); ok {
+					nodeName := fmt.Sprintf("step:[%s]", currentNode) // Format to match []string format roughly
+					gcb.OnGraphStep(ctx, nodeName, state)
+				}
+			}
+		}
+
+		currentNode = nextNode
 	}
 
 	return state, nil

@@ -18,22 +18,40 @@ type StateSchema interface {
 	Update(current, new interface{}) (interface{}, error)
 }
 
+// CleaningStateSchema extends StateSchema with cleanup capabilities.
+// This allows implementing ephemeral channels (values that are cleared after each step).
+type CleaningStateSchema interface {
+	StateSchema
+	// Cleanup performs any necessary cleanup on the state after a step.
+	Cleanup(state interface{}) interface{}
+}
+
 // MapSchema implements StateSchema for map[string]interface{}.
 // It allows defining reducers for specific keys.
 type MapSchema struct {
-	Reducers map[string]Reducer
+	Reducers      map[string]Reducer
+	EphemeralKeys map[string]bool
 }
 
 // NewMapSchema creates a new MapSchema.
 func NewMapSchema() *MapSchema {
 	return &MapSchema{
-		Reducers: make(map[string]Reducer),
+		Reducers:      make(map[string]Reducer),
+		EphemeralKeys: make(map[string]bool),
 	}
 }
 
 // RegisterReducer adds a reducer for a specific key.
 func (s *MapSchema) RegisterReducer(key string, reducer Reducer) {
 	s.Reducers[key] = reducer
+}
+
+// RegisterChannel adds a channel definition (reducer + ephemeral flag).
+func (s *MapSchema) RegisterChannel(key string, reducer Reducer, isEphemeral bool) {
+	s.Reducers[key] = reducer
+	if isEphemeral {
+		s.EphemeralKeys[key] = true
+	}
 }
 
 // Init returns an empty map.
@@ -54,10 +72,6 @@ func (s *MapSchema) Update(current, new interface{}) (interface{}, error) {
 
 	newMap, ok := new.(map[string]interface{})
 	if !ok {
-		// If new state is not a map, maybe it's intended to replace the whole state?
-		// Or maybe it's an error?
-		// For MapSchema, we generally expect partial updates to be maps.
-		// Unless we allow "resetting" the state?
 		return nil, fmt.Errorf("new state is not a map[string]interface{}")
 	}
 
@@ -83,6 +97,43 @@ func (s *MapSchema) Update(current, new interface{}) (interface{}, error) {
 	}
 
 	return result, nil
+}
+
+// Cleanup removes ephemeral keys from the state.
+func (s *MapSchema) Cleanup(state interface{}) interface{} {
+	if len(s.EphemeralKeys) == 0 {
+		return state
+	}
+
+	mState, ok := state.(map[string]interface{})
+	if !ok {
+		return state
+	}
+
+	// Create a copy to avoid mutation if needed, or just delete from map if we own it?
+	// Since Update returns a new map, we can probably modify it in place if we are the only owner.
+	// But to be safe and functional, let's copy if we modify.
+
+	// Optimization: check if any ephemeral key exists
+	hasEphemeral := false
+	for k := range s.EphemeralKeys {
+		if _, exists := mState[k]; exists {
+			hasEphemeral = true
+			break
+		}
+	}
+
+	if !hasEphemeral {
+		return state
+	}
+
+	result := make(map[string]interface{}, len(mState))
+	for k, v := range mState {
+		if !s.EphemeralKeys[k] {
+			result[k] = v
+		}
+	}
+	return result
 }
 
 // Common Reducers

@@ -27,12 +27,16 @@ go get github.com/smallnest/langgraphgo
 
 - **Advanced Capabilities**:
     - **State Schema**: Granular state updates with custom reducers (e.g., `AppendReducer`).
-    - **Enhanced Streaming**: Real-time event streaming with granular `StreamEvent` types.
+    - **Smart Messages**: Intelligent message merging with ID-based upserts (`AddMessages`).
+    - **Command API**: Dynamic control flow and state updates directly from nodes.
+    - **Ephemeral Channels**: Temporary state values that clear automatically after each step.
+    - **Subgraphs**: Compose complex agents by nesting graphs within graphs.
+    - **Enhanced Streaming**: Real-time event streaming with multiple modes (`updates`, `values`, `messages`).
     - **Pre-built Agents**: Ready-to-use `ReAct` and `Supervisor` agent factories.
 
 - **Developer Experience**:
     - **Visualization**: Export graphs to Mermaid, DOT, and ASCII with conditional edge support.
-    - **Human-in-the-loop (HITL)**: Interrupt execution (`InterruptBefore`/`After`) and resume with updated state (`Command`).
+    - **Human-in-the-loop (HITL)**: Interrupt execution, inspect state, edit history (`UpdateState`), and resume.
     - **Observability**: Built-in tracing and metrics support.
     - **Tools**: Integrated `Tavily` and `Exa` search tools.
 
@@ -96,10 +100,14 @@ func main() {
 - **[Checkpointing](./examples/checkpointing/)** - Save and resume state
 - **[Visualization](./examples/visualization/)** - Export graph diagrams
 - **[Listeners](./examples/listeners/)** - Progress, metrics, and logging
-- **[Subgraphs](./examples/subgraph/)** - Nested graph composition
+- **[Subgraphs](./examples/subgraphs/)** - Nested graph composition
 - **[Swarm](./examples/swarm/)** - Multi-agent collaboration
 - **[State Schema](./examples/state_schema/)** - Complex state management with Reducers
-- **[Time Travel](./examples/time_travel/)** - Inspect and modify state history
+- **[Smart Messages](./examples/smart_messages/)** - Intelligent message merging (Upserts)
+- **[Command API](./examples/command_api/)** - Dynamic control flow
+- **[Ephemeral Channels](./examples/ephemeral_channels/)** - Temporary state management
+- **[Streaming Modes](./examples/streaming_modes/)** - Advanced streaming patterns
+- **[Time Travel / HITL](./examples/time_travel/)** - Inspect, edit, and fork state history
 - **[Dynamic Interrupt](./examples/dynamic_interrupt/)** - Pause execution from within a node
 - **[Durable Execution](./examples/durable_execution/)** - Crash recovery and resuming execution
 

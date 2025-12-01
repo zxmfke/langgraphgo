@@ -5,6 +5,8 @@
 ### Core Runtime
 - **Parallel Execution**: Implemented fan-out/fan-in execution model with thread-safe state merging.
 - **Runtime Configuration**: Added `RunnableConfig` to propagate configuration (like thread IDs, user IDs) through the graph execution context.
+- **Command API**: Introduced `Command` struct for dynamic flow control (`Goto`) and state updates (`Update`) directly from nodes.
+- **Subgraphs**: Added native support for composing graphs by using compiled graphs as nodes (`AddSubgraph`).
 
 ### Persistence & Checkpointing
 - **Checkpoint Interface**: Refined `CheckpointSaver` interface for state persistence.
@@ -12,7 +14,9 @@
 
 ### Advanced State & Streaming
 - **State Management**: Introduced `Schema` interface and `Annotated` style reducers (e.g., `AppendMessages`) for complex state updates.
-- **Enhanced Streaming**: Added typed `StreamEvent`s and `CallbackHandler` interface for granular execution monitoring.
+- **Smart Messages**: Implemented `AddMessages` reducer for ID-based message upserts and deduplication.
+- **Ephemeral Channels**: Added support for temporary state values (`isEphemeral`) that are automatically cleared after each step.
+- **Enhanced Streaming**: Added typed `StreamEvent`s and `CallbackHandler` interface. Implemented multiple streaming modes: `updates`, `values`, `messages`, and `debug`.
 
 ### Pre-built Agents
 - **ToolExecutor**: Added a dedicated node for executing tools.
@@ -21,7 +25,8 @@
 
 ### Human-in-the-loop (HITL)
 - **Interrupts**: Implemented `InterruptBefore` and `InterruptAfter` mechanisms to pause graph execution.
-- **Resume & Command**: Added support for resuming execution and updating state via commands, enabling human approval workflows.
+- **Resume & Command**: Added support for resuming execution and updating state via commands.
+- **Time Travel**: Implemented `UpdateState` API to modify past checkpoints and fork execution history.
 
 ### Visualization
 - **Mermaid Export**: Improved graph visualization with better rendering of conditional edges and styling options.
@@ -47,6 +52,11 @@
   - Human-in-the-loop workflows
   - Swarm multi-agent patterns
   - Subgraphs
+  - **Smart Messages** (new)
+  - **Command API** (new)
+  - **Ephemeral Channels** (new)
+  - **Streaming Modes** (new)
+  - **Time Travel / HITL** (new)
   - **LangChain VectorStore integration** (new)
   - **Chroma vector database integration** (new)
   - **Tavily Search Tool** (new)

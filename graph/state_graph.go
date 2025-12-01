@@ -174,10 +174,33 @@ func (r *StateRunnable) InvokeWithConfig(ctx context.Context, initialState inter
 			}
 		}
 
+		// Process results and check for Commands
+		var nextNodesFromCommands []string
+		processedResults := make([]interface{}, len(results))
+
+		for i, res := range results {
+			if cmd, ok := res.(*Command); ok {
+				// It's a Command
+				processedResults[i] = cmd.Update
+
+				if cmd.Goto != nil {
+					switch g := cmd.Goto.(type) {
+					case string:
+						nextNodesFromCommands = append(nextNodesFromCommands, g)
+					case []string:
+						nextNodesFromCommands = append(nextNodesFromCommands, g...)
+					}
+				}
+			} else {
+				// Regular result
+				processedResults[i] = res
+			}
+		}
+
 		// Merge results
 		if r.graph.Schema != nil {
 			// If Schema is defined, use it to update state with results
-			for _, res := range results {
+			for _, res := range processedResults {
 				var err error
 				state, err = r.graph.Schema.Update(state, res)
 				if err != nil {
@@ -186,48 +209,87 @@ func (r *StateRunnable) InvokeWithConfig(ctx context.Context, initialState inter
 			}
 		} else if r.graph.stateMerger != nil {
 			var err error
-			state, err = r.graph.stateMerger(ctx, state, results)
+			state, err = r.graph.stateMerger(ctx, state, processedResults)
 			if err != nil {
 				return nil, fmt.Errorf("state merge failed: %w", err)
 			}
 		} else {
-			if len(results) > 0 {
-				state = results[len(results)-1]
+			if len(processedResults) > 0 {
+				state = processedResults[len(processedResults)-1]
 			}
 		}
 
 		// Determine next nodes
-		nextNodesSet := make(map[string]bool)
+		var nextNodesList []string
 
-		for _, nodeName := range currentNodes {
-			// First check for conditional edges
-			nextNodeFn, hasConditional := r.graph.conditionalEdges[nodeName]
-			if hasConditional {
-				nextNode := nextNodeFn(ctx, state)
-				if nextNode == "" {
-					return nil, fmt.Errorf("conditional edge returned empty next node from %s", nodeName)
+		if len(nextNodesFromCommands) > 0 {
+			// Command.Goto overrides static edges
+			// We deduplicate
+			seen := make(map[string]bool)
+			for _, n := range nextNodesFromCommands {
+				if !seen[n] && n != END {
+					seen[n] = true
+					nextNodesList = append(nextNodesList, n)
 				}
-				nextNodesSet[nextNode] = true
-			} else {
-				// Then check regular edges
-				foundNext := false
-				for _, edge := range r.graph.edges {
-					if edge.From == nodeName {
-						nextNodesSet[edge.To] = true
-						foundNext = true
+			}
+		} else {
+			// Use static edges
+			nextNodesSet := make(map[string]bool)
+
+			for _, nodeName := range currentNodes {
+				// First check for conditional edges
+				nextNodeFn, hasConditional := r.graph.conditionalEdges[nodeName]
+				if hasConditional {
+					nextNode := nextNodeFn(ctx, state)
+					if nextNode == "" {
+						return nil, fmt.Errorf("conditional edge returned empty next node from %s", nodeName)
+					}
+					nextNodesSet[nextNode] = true
+				} else {
+					// Then check regular edges
+					foundNext := false
+					for _, edge := range r.graph.edges {
+						if edge.From == nodeName {
+							nextNodesSet[edge.To] = true
+							foundNext = true
+							// Do NOT break here, to allow fan-out (multiple edges from same node)
+						}
+					}
+
+					if !foundNext {
+						return nil, fmt.Errorf("%w: %s", ErrNoOutgoingEdge, nodeName)
 					}
 				}
+			}
 
-				if !foundNext {
-					return nil, fmt.Errorf("%w: %s", ErrNoOutgoingEdge, nodeName)
-				}
+			// Update nextNodesList from set
+			for node := range nextNodesSet {
+				nextNodesList = append(nextNodesList, node)
 			}
 		}
 
-		// Update currentNodes
-		currentNodes = make([]string, 0, len(nextNodesSet))
-		for node := range nextNodesSet {
-			currentNodes = append(currentNodes, node)
+		// Keep track of nodes that ran for callbacks
+		nodesRan := make([]string, len(currentNodes))
+		copy(nodesRan, currentNodes)
+
+		currentNodes = nextNodesList
+
+		// Cleanup ephemeral state if supported
+		if cleaningSchema, ok := r.graph.Schema.(CleaningStateSchema); ok {
+			state = cleaningSchema.Cleanup(state)
+		}
+
+		// Notify callbacks of step completion
+		if config != nil && len(config.Callbacks) > 0 {
+			for _, cb := range config.Callbacks {
+				if gcb, ok := cb.(GraphCallbackHandler); ok {
+					// We emit one event for the step, listing all nodes that ran
+					// Or we could emit one per node? But state is merged.
+					// Let's emit one event for the super-step.
+					nodeName := fmt.Sprintf("step:%v", nodesRan)
+					gcb.OnGraphStep(ctx, nodeName, state)
+				}
+			}
 		}
 	}
 

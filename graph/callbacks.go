@@ -29,6 +29,13 @@ type CallbackHandler interface {
 	OnRetrieverError(ctx context.Context, err error, runID string)
 }
 
+// GraphCallbackHandler extends CallbackHandler with graph-specific events
+type GraphCallbackHandler interface {
+	CallbackHandler
+	// OnGraphStep is called after a step (node execution + state update) is completed
+	OnGraphStep(ctx context.Context, stepNode string, state interface{})
+}
+
 // Config represents configuration for graph invocation
 // This matches Python's config dict pattern
 type Config struct {

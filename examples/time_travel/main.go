@@ -8,115 +8,107 @@ import (
 	"github.com/smallnest/langgraphgo/graph"
 )
 
-// State is a simple map for this example
-type State map[string]interface{}
+// This example demonstrates "Time Travel" / Human-in-the-loop (HITL) workflow.
+// We run a graph, interrupt it, update the state manually, and resume.
 
 func main() {
-	// 1. Create a Checkpointable Graph
-	// We use CheckpointableMessageGraph for convenience, but we'll use MapSchema
+	// 1. Setup Checkpointable Graph
 	g := graph.NewCheckpointableMessageGraph()
 
-	// Use MapSchema
+	// Schema with integer reducer
 	schema := graph.NewMapSchema()
-	schema.RegisterReducer("count", func(current, new interface{}) (interface{}, error) {
-		// Simple overwrite or increment logic could go here
-		// For this example, we'll just overwrite
-		return new, nil
+	schema.RegisterReducer("count", func(curr, new interface{}) (interface{}, error) {
+		if curr == nil {
+			return new, nil
+		}
+		return curr.(int) + new.(int), nil
 	})
 	g.SetSchema(schema)
 
-	// Define Nodes
-	g.AddNode("step_1", func(ctx context.Context, state interface{}) (interface{}, error) {
-		fmt.Println("Executing Step 1")
-		m := state.(map[string]interface{})
-		count := m["count"].(int)
-		return map[string]interface{}{"count": count + 1}, nil
+	// Node A: Adds 1
+	g.AddNode("A", func(ctx context.Context, state interface{}) (interface{}, error) {
+		fmt.Println("Node A executing...")
+		return map[string]interface{}{"count": 1}, nil
 	})
 
-	g.AddNode("step_2", func(ctx context.Context, state interface{}) (interface{}, error) {
-		fmt.Println("Executing Step 2")
-		m := state.(map[string]interface{})
-		count := m["count"].(int)
-		return map[string]interface{}{"count": count + 1}, nil
+	// Node B: Adds 10
+	g.AddNode("B", func(ctx context.Context, state interface{}) (interface{}, error) {
+		fmt.Println("Node B executing...")
+		return map[string]interface{}{"count": 10}, nil
 	})
 
-	g.SetEntryPoint("step_1")
-	g.AddEdge("step_1", "step_2")
-	g.AddEdge("step_2", graph.END)
+	g.SetEntryPoint("A")
+	g.AddEdge("A", "B")
+	g.AddEdge("B", graph.END)
 
-	// Compile
-	app, err := g.CompileCheckpointable()
+	// Configure interrupt before B
+	config := &graph.Config{
+		InterruptBefore: []string{"B"},
+		Configurable: map[string]interface{}{
+			"thread_id": "thread_1",
+		},
+	}
+
+	runnable, err := g.CompileCheckpointable()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 2. Run Initial Execution
-	fmt.Println("--- Initial Run ---")
-	initialState := map[string]interface{}{"count": 0}
+	ctx := context.Background()
 
-	// We need to define a ThreadID to track state
-	// threadID := "thread-1"
-	// config := &graph.Config{
-	// 	Configurable: map[string]interface{}{
-	// 		"thread_id": threadID,
-	// 	},
-	// }
+	// 2. Run Initial (Interrupts before B)
+	fmt.Println("--- Run 1 (Start) ---")
+	res, err := runnable.InvokeWithConfig(ctx, map[string]interface{}{"count": 0}, config)
+	// Expect interrupt error or partial result?
+	// Invoke returns state at interrupt.
+	// Note: Invoke returns (state, error). If interrupted, error is GraphInterrupt.
+	if err != nil {
+		if _, ok := err.(*graph.GraphInterrupt); ok {
+			fmt.Println("Graph Interrupted as expected.")
+		} else {
+			log.Fatal(err)
+		}
+	}
+	fmt.Printf("State at Interrupt: %v\n", res) // Should be count=1 (0+1)
 
-	// Note: Currently Invoke on CheckpointableRunnable uses internal executionID if not passed?
-	// The implementation of Invoke in CheckpointableRunnable doesn't explicitly use config.Configurable["thread_id"]
-	// to set executionID. It generates a new one.
-
-	// So we just run it. The app instance holds the executionID.
-
-	res, err := app.Invoke(context.Background(), initialState)
+	// 3. Update State (Human Intervention)
+	// We decide to change the count to 100 before B runs.
+	fmt.Println("\n--- Human Update ---")
+	// UpdateState merges. We want to set it to 100.
+	// Since our reducer adds, if we pass 99, 1+99=100.
+	// Or if we want to OVERWRITE, we need a different reducer or schema logic.
+	// For this example, let's just add 50.
+	newConfig, err := runnable.UpdateState(ctx, config, map[string]interface{}{"count": 50}, "human")
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Initial Result: %v\n", res)
+	fmt.Println("State Updated. New Checkpoint created.")
 
-	// 3. Get Current State
-	fmt.Println("\n--- Get Current State ---")
-	// We pass nil config to use the app's internal executionID
-	snapshot, err := app.GetState(context.Background(), nil)
+	// 4. Resume Execution
+	// We resume from the new checkpoint.
+	// Note: We need to clear InterruptBefore to let it proceed, or use ResumeFrom?
+	// If we just Invoke with new config (pointing to new checkpoint), it should continue?
+	// But we need to tell it to start at B?
+	// The checkpoint knows "Next" nodes? Currently our Checkpoint struct doesn't store Next nodes explicitly.
+	// But `Invoke` logic determines next nodes from current.
+	// If we resume, we usually need to specify `ResumeFrom` or rely on saved state.
+	// For now, let's use `ResumeFrom` = "B".
+
+	resumeConfig := &graph.Config{
+		Configurable: newConfig.Configurable, // Use the checkpoint ID from UpdateState
+		ResumeFrom:   []string{"B"},
+	}
+
+	fmt.Println("\n--- Run 2 (Resume) ---")
+	finalRes, err := runnable.InvokeWithConfig(ctx, nil, resumeConfig) // State loaded from checkpoint
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Snapshot Values: %v\n", snapshot.Values)
-	fmt.Printf("Snapshot Config: %v\n", snapshot.Config)
 
-	// 4. Time Travel / Update State
-	// Let's say we want to "go back" and change the count to 10, effectively forking the history.
-	fmt.Println("\n--- Update State (Time Travel) ---")
-
-	newValues := map[string]interface{}{"count": 10}
-	// We update the state, pretending we are at "step_1" (or before step_2)
-	// This creates a new checkpoint.
-	newConfig, err := app.UpdateState(context.Background(), nil, newValues, "step_1")
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("New Config: %v\n", newConfig)
-
-	// 5. Continue Execution from new state
-	// To "resume", we invoke again. But Invoke() starts a NEW executionID by default in current impl.
-	// We need a way to Invoke on an EXISTING executionID or Resume.
-
-	// ResumeFromCheckpoint is available.
-	fmt.Println("\n--- Resume from New State ---")
-	checkpointID := newConfig.Configurable["checkpoint_id"].(string)
-
-	// Note: ResumeFromCheckpoint implementation currently just loads state.
-	// It doesn't re-run the graph from that point automatically in the current simple implementation.
-	// But let's see what it returns.
-	resumedState, err := app.ResumeFromCheckpoint(context.Background(), checkpointID)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Resumed State: %v\n", resumedState)
-
-	// In a full implementation, we would want to run the graph starting from the next node.
-	// The current ResumeFromCheckpoint just returns the state.
-	// To actually run, we might need to create a new Runnable or use a method that accepts start_node.
-
-	// For this example, we demonstrate that the state was indeed updated and persisted.
+	// Final result should be:
+	// Initial: 0
+	// A: +1 -> 1
+	// Update: +50 -> 51
+	// B: +10 -> 61
+	fmt.Printf("Final Result: %v\n", finalRes)
 }

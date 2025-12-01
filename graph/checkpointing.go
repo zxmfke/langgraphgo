@@ -241,17 +241,11 @@ func (cr *CheckpointableRunnable) InvokeWithConfig(ctx context.Context, initialS
 		autoSave:    cr.config.AutoSave,
 	}
 
-	// Add checkpoint listener to all nodes
-	for _, node := range cr.runnable.listenableNodes {
-		node.AddListener(checkpointListener)
+	// Add checkpoint listener to config callbacks
+	if config == nil {
+		config = &Config{}
 	}
-
-	defer func() {
-		// Clean up: remove checkpoint listener from all nodes
-		for _, node := range cr.runnable.listenableNodes {
-			node.RemoveListener(checkpointListener)
-		}
-	}()
+	config.Callbacks = append(config.Callbacks, checkpointListener)
 
 	return cr.runnable.InvokeWithConfig(ctx, initialState, config)
 }
@@ -305,39 +299,39 @@ type CheckpointListener struct {
 	store       CheckpointStore
 	executionID string
 	autoSave    bool
+	// Embed NoOpCallbackHandler to satisfy other CallbackHandler methods
+	NoOpCallbackHandler
 }
 
-// OnNodeEvent implements the NodeListener interface for checkpointing
-func (cl *CheckpointListener) OnNodeEvent(ctx context.Context, event NodeEvent, nodeName string, state interface{}, err error) {
-	if !cl.autoSave || event != NodeEventComplete {
-		return
-	}
-
-	if err != nil {
-		// Don't save checkpoints for failed nodes
+// OnGraphStep implements GraphCallbackHandler
+func (cl *CheckpointListener) OnGraphStep(ctx context.Context, stepNode string, state interface{}) {
+	if !cl.autoSave {
 		return
 	}
 
 	checkpoint := &Checkpoint{
 		ID:        generateCheckpointID(),
-		NodeName:  nodeName,
+		NodeName:  stepNode,
 		State:     state,
 		Timestamp: time.Now(),
 		Version:   1,
 		Metadata: map[string]interface{}{
 			"execution_id": cl.executionID,
-			"event":        event,
+			"event":        "step",
 		},
 	}
 
-	// Save checkpoint asynchronously to avoid blocking execution
+	// Save checkpoint asynchronously
 	go func(ctx context.Context) {
 		if saveErr := cl.store.Save(ctx, checkpoint); saveErr != nil {
-			// Error is intentionally ignored to avoid blocking execution
 			_ = saveErr
 		}
 	}(ctx)
 }
+
+// OnNodeEvent is no longer used for saving state, but kept if needed for interface compatibility
+// or we can remove it if we don't use it as NodeListener anymore.
+// CheckpointableRunnable currently adds it as NodeListener. We should change that.
 
 // CheckpointableMessageGraph extends ListenableMessageGraph with checkpointing
 type CheckpointableMessageGraph struct {
@@ -481,16 +475,74 @@ func (cr *CheckpointableRunnable) UpdateState(ctx context.Context, config *Confi
 		threadID = cr.executionID
 	}
 
-	// Create new checkpoint
+	// 1. Get current state
+	// We need to find the latest checkpoint for this thread to merge against
+	checkpoints, err := cr.config.Store.List(ctx, threadID)
+	var currentState interface{}
+	var currentVersion int
+
+	if err == nil && len(checkpoints) > 0 {
+		// Assume last is latest
+		latest := checkpoints[len(checkpoints)-1]
+		currentState = latest.State
+		currentVersion = latest.Version
+	} else {
+		// No existing state, initialize if schema exists
+		if cr.runnable.graph.Schema != nil {
+			currentState = cr.runnable.graph.Schema.Init()
+		}
+	}
+
+	// 2. Merge values
+	newState := values
+	if cr.runnable.graph.Schema != nil {
+		// If we have a current state, merge into it
+		if currentState != nil {
+			newState, err = cr.runnable.graph.Schema.Update(currentState, values)
+			if err != nil {
+				return nil, fmt.Errorf("failed to merge state: %w", err)
+			}
+		} else {
+			// If no current state, maybe Init + Update?
+			// Or just use values if it matches schema?
+			// Let's try Init + Update
+			initial := cr.runnable.graph.Schema.Init()
+			newState, err = cr.runnable.graph.Schema.Update(initial, values)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize and merge state: %w", err)
+			}
+		}
+	} else if currentState != nil {
+		// No schema, but have current state.
+		// If map, try to merge? Or just overwrite?
+		// Without schema, we usually default to overwrite or simple merge if map.
+		// Let's assume overwrite if no schema, or maybe simple map merge if both are maps.
+		if curMap, ok := currentState.(map[string]interface{}); ok {
+			if valMap, ok := values.(map[string]interface{}); ok {
+				// Simple map merge
+				merged := make(map[string]interface{})
+				for k, v := range curMap {
+					merged[k] = v
+				}
+				for k, v := range valMap {
+					merged[k] = v
+				}
+				newState = merged
+			}
+		}
+	}
+
+	// 3. Create new checkpoint
 	checkpoint := &Checkpoint{
 		ID:        generateCheckpointID(),
 		NodeName:  asNode, // The node that "made" this update
-		State:     values,
+		State:     newState,
 		Timestamp: time.Now(),
-		Version:   1, // Should increment version based on parent
+		Version:   currentVersion + 1,
 		Metadata: map[string]interface{}{
 			"execution_id": threadID,
 			"source":       "update_state",
+			"updated_by":   asNode,
 		},
 	}
 
