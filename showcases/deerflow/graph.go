@@ -15,6 +15,7 @@ type State struct {
 	Request         Request  `json:"request"`
 	Plan            []string `json:"plan"`
 	ResearchResults []string `json:"research_results"`
+	Images          []string `json:"images"` // Image URLs from search results
 	FinalReport     string   `json:"final_report"`
 	Step            int      `json:"step"`
 }
